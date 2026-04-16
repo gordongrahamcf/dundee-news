@@ -40,6 +40,8 @@ const RSS_FEEDS: RssFeed[] = [
   },
 ];
 
+export const ACTIVE_SOURCES = ['The Guardian', ...RSS_FEEDS.map(f => f.source)];
+
 function stripHtml(html: string): string {
   return html
     .replace(/<[^>]*>/g, '')
@@ -58,13 +60,20 @@ function isWithinHours(date: Date, hours: number): boolean {
   return date >= cutoff;
 }
 
+// Guardian is always fetched with a 7-day window so it always contributes
+// to the pool even on days with no Dundee breaking news.
 async function fetchGuardianArticles(): Promise<NewsArticle[]> {
   try {
-    const yesterday = (() => { const d = new Date(); d.setHours(d.getHours() - 24); return d.toISOString().split('T')[0]; })();
+    const fromDate = (() => {
+      const d = new Date();
+      d.setDate(d.getDate() - 7);
+      return d.toISOString().split('T')[0];
+    })();
+
     const url = new URL('https://content.guardianapis.com/search');
     url.searchParams.set('q', 'Dundee');
     url.searchParams.set('api-key', GUARDIAN_API_KEY);
-    url.searchParams.set('from-date', yesterday);
+    url.searchParams.set('from-date', fromDate);
     url.searchParams.set('page-size', '20');
     url.searchParams.set('show-fields', 'thumbnail,trailText,byline');
     url.searchParams.set('order-by', 'newest');
@@ -75,25 +84,23 @@ async function fetchGuardianArticles(): Promise<NewsArticle[]> {
     const data: GuardianApiResponse = await res.json();
     if (data.response.status !== 'ok') return [];
 
-    return data.response.results
-      .filter(r => isWithinHours(new Date(r.webPublicationDate), 24))
-      .map(r => ({
-        id: `guardian-${r.id}`,
-        title: r.webTitle,
-        description: stripHtml(r.fields?.trailText ?? r.sectionName),
-        url: r.webUrl,
-        imageUrl: r.fields?.thumbnail,
-        publishedAt: new Date(r.webPublicationDate),
-        source: 'The Guardian',
-        sourceKey: 'guardian' as SourceKey,
-        author: r.fields?.byline,
-      }));
+    return data.response.results.map(r => ({
+      id: `guardian-${r.id}`,
+      title: r.webTitle,
+      description: stripHtml(r.fields?.trailText ?? r.sectionName),
+      url: r.webUrl,
+      imageUrl: r.fields?.thumbnail,
+      publishedAt: new Date(r.webPublicationDate),
+      source: 'The Guardian',
+      sourceKey: 'guardian' as SourceKey,
+      author: r.fields?.byline,
+    }));
   } catch {
     return [];
   }
 }
 
-async function fetchRssFeed(feed: RssFeed, maxAgeHours = 24): Promise<NewsArticle[]> {
+async function fetchRssFeed(feed: RssFeed): Promise<NewsArticle[]> {
   try {
     const url = `${RSS2JSON_BASE}?rss_url=${encodeURIComponent(feed.url)}`;
     const res = await fetch(url);
@@ -105,7 +112,7 @@ async function fetchRssFeed(feed: RssFeed, maxAgeHours = 24): Promise<NewsArticl
     return data.items
       .filter(item => {
         const pubDate = new Date(item.pubDate);
-        if (!isWithinHours(pubDate, maxAgeHours)) return false;
+        if (!isWithinHours(pubDate, 24)) return false;
         if (feed.filterKeywords) {
           const text = (item.title + ' ' + item.description).toLowerCase();
           return feed.filterKeywords.some(kw => text.includes(kw));
@@ -140,38 +147,14 @@ function extractFirstImage(html: string): string | undefined {
   return match?.[1];
 }
 
-const TITLE_STOPWORDS = new Set([
-  'the','and','for','with','after','over','from','that','this','into',
-  'about','near','than','have','been','will','were','they','their',
-  'which','when','where','what','who','says','said','amid',
-]);
-
-function titleWords(title: string): Set<string> {
-  return new Set(
-    title.toLowerCase()
-      .replace(/[^a-z0-9\s]/g, '')
-      .split(/\s+/)
-      .filter(w => w.length > 3 && !TITLE_STOPWORDS.has(w))
-  );
-}
-
-function isSameStory(a: string, b: string, threshold = 0.55): boolean {
-  const wa = titleWords(a);
-  const wb = titleWords(b);
-  if (wa.size === 0 || wb.size === 0) return a.toLowerCase() === b.toLowerCase();
-  const intersection = [...wa].filter(w => wb.has(w)).length;
-  const union = new Set([...wa, ...wb]).size;
-  return intersection / union >= threshold;
-}
-
 function deduplicateArticles(articles: NewsArticle[]): NewsArticle[] {
-  const kept: NewsArticle[] = [];
-  for (const article of articles) {
-    if (!kept.some(k => isSameStory(k.title, article.title))) {
-      kept.push(article);
-    }
-  }
-  return kept;
+  const seen = new Set<string>();
+  return articles.filter(a => {
+    const key = a.title.toLowerCase().slice(0, 60);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function shuffleArray<T>(arr: T[]): T[] {
@@ -184,103 +167,61 @@ function shuffleArray<T>(arr: T[]): T[] {
 }
 
 /**
- * Round-robin pick across sources, hard-capped at maxPerSource per outlet.
- * Groups articles by source, shuffles within each group, then interleaves
- * one per source per round until `total` is reached or the cap is hit.
+ * Round-robin pick across sources, preferring at most maxPerSource per outlet.
+ * First pass enforces the cap; second pass fills remaining slots freely.
  */
-function diversifyArticles(articles: NewsArticle[], total = 5, maxPerSource = 2): NewsArticle[] {
+export function pickArticles(pool: NewsArticle[], total = 5, maxPerSource = 2): NewsArticle[] {
   const bySource = new Map<string, NewsArticle[]>();
-  for (const article of articles) {
+  for (const article of pool) {
     if (!bySource.has(article.sourceKey)) bySource.set(article.sourceKey, []);
     bySource.get(article.sourceKey)!.push(article);
   }
 
-  // Shuffle within each source group and randomise source order
   const groups = shuffleArray(
     Array.from(bySource.values()).map(g => shuffleArray(g))
   );
 
   const result: NewsArticle[] = [];
+
   for (let round = 0; round < maxPerSource && result.length < total; round++) {
     for (const group of groups) {
       if (result.length >= total) break;
       if (round < group.length) result.push(group[round]);
     }
   }
+
+  if (result.length < total) {
+    for (let round = maxPerSource; result.length < total; round++) {
+      let added = false;
+      for (const group of groups) {
+        if (result.length >= total) break;
+        if (round < group.length) { result.push(group[round]); added = true; }
+      }
+      if (!added) break;
+    }
+  }
+
   return result;
 }
 
-export const ACTIVE_SOURCES = ['The Guardian', ...RSS_FEEDS.map(f => f.source)];
-
-export async function fetchDundeeNews(): Promise<{
+export interface ArticlePool {
   articles: NewsArticle[];
-  expandedWindow: boolean;
-}> {
+  fetchedAt: Date;
+}
+
+/**
+ * Fetches the full article pool: Guardian (7-day) + all RSS feeds (24h).
+ * Guardian always uses a 7-day window so it contributes even on quiet news days.
+ * Returns the deduplicated, date-sorted pool — caller decides what to display.
+ */
+export async function fetchArticlePool(): Promise<ArticlePool> {
   const [guardianArticles, ...rssResults] = await Promise.all([
     fetchGuardianArticles(),
     ...RSS_FEEDS.map(f => fetchRssFeed(f)),
   ]);
 
-  const allArticles = deduplicateArticles([guardianArticles, ...rssResults].flat());
-  allArticles.sort((a, b) => b.publishedAt.getTime() - a.publishedAt.getTime());
+  const articles = deduplicateArticles([guardianArticles, ...rssResults].flat());
+  articles.sort((a, b) => b.publishedAt.getTime() - a.publishedAt.getTime());
 
-  // Diversity-cap first: if one source dominates the 24h pool we still need to expand
-  const primary = diversifyArticles(allArticles);
-  if (primary.length >= 5) {
-    return { articles: primary, expandedWindow: false };
-  }
-
-  // Not enough diverse articles in 24h — expand all sources to 7 days
-  const expanded = await fetchExpanded();
-  const combined = deduplicateArticles([...allArticles, ...expanded]);
-  combined.sort((a, b) => b.publishedAt.getTime() - a.publishedAt.getTime());
-
-  return {
-    articles: diversifyArticles(combined, Math.min(5, combined.length)),
-    expandedWindow: true,
-  };
-}
-
-async function fetchExpanded(): Promise<NewsArticle[]> {
-  const HOURS_7D = 7 * 24;
-
-  // Guardian 7-day
-  const guardianUrl = new URL('https://content.guardianapis.com/search');
-  guardianUrl.searchParams.set('q', 'Dundee Scotland');
-  guardianUrl.searchParams.set('api-key', GUARDIAN_API_KEY);
-  guardianUrl.searchParams.set('from-date', (() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 7);
-    return d.toISOString().split('T')[0];
-  })());
-  guardianUrl.searchParams.set('page-size', '20');
-  guardianUrl.searchParams.set('show-fields', 'thumbnail,trailText,byline');
-  guardianUrl.searchParams.set('order-by', 'newest');
-
-  const [guardianRes, ...rssExpanded] = await Promise.all([
-    fetch(guardianUrl.toString()).catch(() => null),
-    ...RSS_FEEDS.map(f => fetchRssFeed(f, HOURS_7D)),
-  ]);
-
-  const guardianArticles: NewsArticle[] = [];
-  if (guardianRes?.ok) {
-    try {
-      const data: GuardianApiResponse = await guardianRes.json();
-      if (data.response.status === 'ok') {
-        guardianArticles.push(...data.response.results.map(r => ({
-          id: `guardian-expanded-${r.id}`,
-          title: r.webTitle,
-          description: stripHtml(r.fields?.trailText ?? r.sectionName),
-          url: r.webUrl,
-          imageUrl: r.fields?.thumbnail,
-          publishedAt: new Date(r.webPublicationDate),
-          source: 'The Guardian',
-          sourceKey: 'guardian' as SourceKey,
-          author: r.fields?.byline,
-        })));
-      }
-    } catch { /* ignore */ }
-  }
-
-  return [...guardianArticles, ...rssExpanded.flat()];
+  return { articles, fetchedAt: new Date() };
 }
