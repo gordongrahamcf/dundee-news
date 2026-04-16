@@ -84,7 +84,7 @@ async function loadNews(): Promise<void> {
   label.textContent = 'Fetching latest news…';
 
   try {
-    const { articles, expandedWindow } = await fetchDundeeNews();
+    const articles = await fetchDundeeNews();
 
     if (articles.length === 0) {
       grid.innerHTML = renderEmpty();
@@ -93,8 +93,7 @@ async function loadNews(): Promise<void> {
       grid.innerHTML = articles.map((a, i) => renderArticleCard(a, i)).join('');
 
       const count = articles.length;
-      const windowLabel = expandedWindow ? 'past 7 days' : 'past 24 hours';
-      label.textContent = `${count} article${count !== 1 ? 's' : ''} · ${windowLabel}`;
+      label.textContent = `${count} article${count !== 1 ? 's' : ''} · past 24 hours`;
 
       // Trigger enter animation
       requestAnimationFrame(() => {

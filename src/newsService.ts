@@ -8,24 +8,29 @@ interface RssFeed {
   source: string;
   sourceKey: SourceKey;
   filterKeywords?: string[];
+  parseSourceFromTitle?: boolean;
 }
 
 const RSS_FEEDS: RssFeed[] = [
   {
+    // Dundee's main local paper
     url: 'https://www.thecourier.co.uk/feed/',
     source: 'The Courier',
     sourceKey: 'courier',
   },
   {
-    url: 'https://feeds.bbci.co.uk/news/scotland/rss.xml',
+    // BBC's Tayside & Central Scotland feed — no keyword filter needed
+    url: 'https://feeds.bbci.co.uk/news/scotland/tayside/rss.xml',
     source: 'BBC Scotland',
     sourceKey: 'bbc',
-    filterKeywords: ['dundee', 'tayside', 'angus', 'fife'],
   },
   {
-    url: 'https://www.dundeelive.co.uk/news/feed/',
-    source: 'Dundee Live',
+    // Google News aggregates multiple Scottish outlets for Dundee stories;
+    // source name is parsed from each item's title suffix ("Headline - Source")
+    url: 'https://news.google.com/rss/search?q=Dundee+Scotland&hl=en-GB&gl=GB&ceid=GB:en',
+    source: 'Local News',
     sourceKey: 'dundeelive',
+    parseSourceFromTitle: true,
   },
 ];
 
@@ -53,6 +58,18 @@ function isWithin24Hours(date: Date): boolean {
   return date >= cutoff;
 }
 
+function guessSourceKey(sourceName: string): SourceKey {
+  const lower = sourceName.toLowerCase();
+  if (lower.includes('guardian')) return 'guardian';
+  if (lower.includes('bbc')) return 'bbc';
+  if (lower.includes('courier')) return 'courier';
+  return 'dundeelive';
+}
+
+function fetchWithTimeout(url: string, timeoutMs = 8000): Promise<Response> {
+  return fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+}
+
 async function fetchGuardianArticles(): Promise<NewsArticle[]> {
   try {
     const yesterday = getYesterdayDateString();
@@ -64,7 +81,7 @@ async function fetchGuardianArticles(): Promise<NewsArticle[]> {
     url.searchParams.set('show-fields', 'thumbnail,trailText,byline');
     url.searchParams.set('order-by', 'newest');
 
-    const res = await fetch(url.toString());
+    const res = await fetchWithTimeout(url.toString());
     if (!res.ok) return [];
 
     const data: GuardianApiResponse = await res.json();
@@ -91,7 +108,7 @@ async function fetchGuardianArticles(): Promise<NewsArticle[]> {
 async function fetchRssFeed(feed: RssFeed): Promise<NewsArticle[]> {
   try {
     const url = `${RSS2JSON_BASE}?rss_url=${encodeURIComponent(feed.url)}&count=30`;
-    const res = await fetch(url);
+    const res = await fetchWithTimeout(url);
     if (!res.ok) return [];
 
     const data: Rss2JsonResponse = await res.json();
@@ -108,20 +125,34 @@ async function fetchRssFeed(feed: RssFeed): Promise<NewsArticle[]> {
         return true;
       })
       .map(item => {
+        // Google News embeds "Headline - Source Name" in the title
+        let title = stripHtml(item.title);
+        let source = feed.source;
+        let sourceKey = feed.sourceKey;
+
+        if (feed.parseSourceFromTitle) {
+          const lastDash = title.lastIndexOf(' - ');
+          if (lastDash !== -1) {
+            source = title.slice(lastDash + 3).trim();
+            title = title.slice(0, lastDash).trim();
+            sourceKey = guessSourceKey(source);
+          }
+        }
+
         const imageUrl =
           item.thumbnail ||
           item.enclosure?.link ||
           extractFirstImage(item.description);
 
         return {
-          id: `${feed.sourceKey}-${btoa(item.link).slice(0, 16)}`,
-          title: stripHtml(item.title),
+          id: `${sourceKey}-${btoa(encodeURIComponent(item.link)).slice(0, 16)}`,
+          title,
           description: stripHtml(item.description).slice(0, 200) + '…',
           url: item.link,
           imageUrl: imageUrl && imageUrl.startsWith('http') ? imageUrl : undefined,
           publishedAt: new Date(item.pubDate),
-          source: feed.source,
-          sourceKey: feed.sourceKey,
+          source,
+          sourceKey,
           author: item.author || undefined,
         };
       });
@@ -154,10 +185,7 @@ function shuffleArray<T>(arr: T[]): T[] {
   return copy;
 }
 
-export async function fetchDundeeNews(): Promise<{
-  articles: NewsArticle[];
-  expandedWindow: boolean;
-}> {
+export async function fetchDundeeNews(): Promise<NewsArticle[]> {
   const [guardianArticles, ...rssResults] = await Promise.all([
     fetchGuardianArticles(),
     ...RSS_FEEDS.map(f => fetchRssFeed(f)),
@@ -166,53 +194,5 @@ export async function fetchDundeeNews(): Promise<{
   const allArticles = deduplicateArticles([guardianArticles, ...rssResults].flat());
   allArticles.sort((a, b) => b.publishedAt.getTime() - a.publishedAt.getTime());
 
-  if (allArticles.length >= 5) {
-    return { articles: shuffleArray(allArticles).slice(0, 5), expandedWindow: false };
-  }
-
-  // Not enough in 24h — expand to 7 days by relaxing the date filter
-  const expanded = await fetchExpanded();
-  const combined = deduplicateArticles([...allArticles, ...expanded]);
-  combined.sort((a, b) => b.publishedAt.getTime() - a.publishedAt.getTime());
-
-  return {
-    articles: shuffleArray(combined).slice(0, Math.min(5, combined.length)),
-    expandedWindow: true,
-  };
-}
-
-async function fetchExpanded(): Promise<NewsArticle[]> {
-  try {
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    const dateStr = sevenDaysAgo.toISOString().split('T')[0];
-
-    const url = new URL('https://content.guardianapis.com/search');
-    url.searchParams.set('q', 'Dundee Scotland');
-    url.searchParams.set('api-key', GUARDIAN_API_KEY);
-    url.searchParams.set('from-date', dateStr);
-    url.searchParams.set('page-size', '20');
-    url.searchParams.set('show-fields', 'thumbnail,trailText,byline');
-    url.searchParams.set('order-by', 'newest');
-
-    const res = await fetch(url.toString());
-    if (!res.ok) return [];
-
-    const data: GuardianApiResponse = await res.json();
-    if (data.response.status !== 'ok') return [];
-
-    return data.response.results.map(r => ({
-      id: `guardian-expanded-${r.id}`,
-      title: r.webTitle,
-      description: stripHtml(r.fields?.trailText ?? r.sectionName),
-      url: r.webUrl,
-      imageUrl: r.fields?.thumbnail,
-      publishedAt: new Date(r.webPublicationDate),
-      source: 'The Guardian',
-      sourceKey: 'guardian' as SourceKey,
-      author: r.fields?.byline,
-    }));
-  } catch {
-    return [];
-  }
+  return shuffleArray(allArticles).slice(0, 5);
 }

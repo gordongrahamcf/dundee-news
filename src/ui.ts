@@ -94,7 +94,7 @@ export function renderArticleCard(article: NewsArticle, index: number): string {
       ${imageSection}
       <div class="card-body">
         <div class="card-meta">
-          <span class="source-badge" style="background: ${config.color}">${config.emoji} ${escapeHtml(config.label)}</span>
+          <span class="source-badge" style="background: ${config.color}">${config.emoji} ${escapeHtml(article.source)}</span>
           <span class="card-time">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
               <circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/>
