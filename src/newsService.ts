@@ -140,14 +140,38 @@ function extractFirstImage(html: string): string | undefined {
   return match?.[1];
 }
 
+const TITLE_STOPWORDS = new Set([
+  'the','and','for','with','after','over','from','that','this','into',
+  'about','near','than','have','been','will','were','they','their',
+  'which','when','where','what','who','says','said','amid',
+]);
+
+function titleWords(title: string): Set<string> {
+  return new Set(
+    title.toLowerCase()
+      .replace(/[^a-z0-9\s]/g, '')
+      .split(/\s+/)
+      .filter(w => w.length > 3 && !TITLE_STOPWORDS.has(w))
+  );
+}
+
+function isSameStory(a: string, b: string, threshold = 0.55): boolean {
+  const wa = titleWords(a);
+  const wb = titleWords(b);
+  if (wa.size === 0 || wb.size === 0) return a.toLowerCase() === b.toLowerCase();
+  const intersection = [...wa].filter(w => wb.has(w)).length;
+  const union = new Set([...wa, ...wb]).size;
+  return intersection / union >= threshold;
+}
+
 function deduplicateArticles(articles: NewsArticle[]): NewsArticle[] {
-  const seen = new Set<string>();
-  return articles.filter(a => {
-    const key = a.title.toLowerCase().slice(0, 60);
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  const kept: NewsArticle[] = [];
+  for (const article of articles) {
+    if (!kept.some(k => isSameStory(k.title, article.title))) {
+      kept.push(article);
+    }
+  }
+  return kept;
 }
 
 function shuffleArray<T>(arr: T[]): T[] {
