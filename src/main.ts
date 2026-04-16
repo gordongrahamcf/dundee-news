@@ -1,5 +1,5 @@
 import './style.css';
-import { fetchDundeeNews } from './newsService';
+import { fetchDundeeNews, ACTIVE_SOURCES } from './newsService';
 import { renderArticleCard, renderSkeleton, renderError, renderEmpty } from './ui';
 
 const app = document.getElementById('app')!;
@@ -49,7 +49,7 @@ function buildShell(): void {
     </main>
 
     <footer class="footer">
-      <p>Sources: The Guardian · BBC Scotland · The Courier · Dundee Live</p>
+      <p>Sources: ${ACTIVE_SOURCES.join(' · ')}</p>
       <p class="footer-sub">Showing articles from the past 24 hours · Built with TypeScript</p>
     </footer>
   `;

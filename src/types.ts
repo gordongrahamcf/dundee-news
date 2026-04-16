@@ -10,7 +10,7 @@ export interface NewsArticle {
   author?: string;
 }
 
-export type SourceKey = 'guardian' | 'bbc' | 'courier' | 'dundeelive';
+export type SourceKey = 'guardian' | 'bbc' | 'courier' | 'stv';
 
 export interface SourceConfig {
   key: SourceKey;

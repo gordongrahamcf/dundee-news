@@ -19,11 +19,11 @@ const SOURCE_CONFIGS: Record<SourceKey, SourceConfig> = {
     color: '#e63946',
     emoji: '📰',
   },
-  dundeelive: {
-    key: 'dundeelive',
-    label: 'Dundee Live',
-    color: '#8338EC',
-    emoji: '⚡',
+  stv: {
+    key: 'stv',
+    label: 'STV News',
+    color: '#007A3D',
+    emoji: '📺',
   },
 };
 
