@@ -16,6 +16,17 @@ function buildShell(): void {
             <h1 class="logo-title">Dundee News</h1>
             <p class="logo-subtitle">City of Discovery · Live Updates</p>
           </div>
+          <div class="producer-block">
+            <img
+              class="producer-avatar"
+              src="https://ca.slack-edge.com/T0269F16S-U02S05HNB-28534f5b8723-512"
+              alt="Gordon Graham"
+            />
+            <div class="producer-text">
+              <span class="producer-label">A James Malcolm Production</span>
+              <span class="producer-credit">brought to you by Gordon Graham</span>
+            </div>
+          </div>
         </div>
         <button class="refresh-btn" id="refreshBtn" aria-label="Refresh news">
           <svg class="refresh-icon" id="refreshIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
