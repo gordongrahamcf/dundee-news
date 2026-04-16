@@ -166,11 +166,42 @@ function shuffleArray<T>(arr: T[]): T[] {
   return copy;
 }
 
-/**
- * Round-robin pick across sources, preferring at most maxPerSource per outlet.
- * First pass enforces the cap; second pass fills remaining slots freely.
- */
-export function pickArticles(pool: NewsArticle[], total = 5, maxPerSource = 2): NewsArticle[] {
+// Sports articles are deprioritised — they fill remaining slots only after
+// local/general news has been picked. Patterns are checked against title only
+// to avoid false positives (e.g. "Forfar Golf Club" in a road crash story).
+const SPORTS_PATTERNS = [
+  /\bfc\b/i,
+  /\bpremiership\b/i,
+  /scottish cup/i,
+  /league cup/i,
+  /champions league/i,
+  /europa league/i,
+  /\bhampden\b/i,
+  /\btannadice\b/i,
+  /dens park/i,
+  /\bibrox\b/i,
+  /\bparkhead\b/i,
+  /\bfootball\b/i,
+  /\brugby\b/i,
+  /\bcricket\b/i,
+  /\btennis\b/i,
+  /\bboxing\b/i,
+  /\bathletics\b/i,
+  /\bcycling\b/i,
+  /\bsnooker\b/i,
+  /\bpromotion\b.*\bfc\b/i,
+  /\brelegation\b/i,
+  /\btransfer\b.*\bfc\b/i,
+];
+
+function isSportsArticle(article: NewsArticle): boolean {
+  // Guardian URL path is the most reliable signal for that source
+  if (article.sourceKey === 'guardian' && article.url.includes('/sport/')) return true;
+  return SPORTS_PATTERNS.some(p => p.test(article.title));
+}
+
+/** Round-robin with source diversity cap, falls back to uncapped fill if short. */
+function roundRobinPick(pool: NewsArticle[], total: number, maxPerSource: number): NewsArticle[] {
   const bySource = new Map<string, NewsArticle[]>();
   for (const article of pool) {
     if (!bySource.has(article.sourceKey)) bySource.set(article.sourceKey, []);
@@ -202,6 +233,27 @@ export function pickArticles(pool: NewsArticle[], total = 5, maxPerSource = 2): 
   }
 
   return result;
+}
+
+/**
+ * Pick articles with source diversity, deprioritising sports content.
+ * Non-sport articles fill slots first; sports only appear to top up remaining slots.
+ */
+export function pickArticles(pool: NewsArticle[], total = 5, maxPerSource = 2): NewsArticle[] {
+  const nonSport = pool.filter(a => !isSportsArticle(a));
+  const sport    = pool.filter(a =>  isSportsArticle(a));
+
+  const primary = roundRobinPick(nonSport, total, maxPerSource);
+  if (primary.length >= total) return primary;
+
+  const pickedIds = new Set(primary.map(a => a.id));
+  const sportFill = roundRobinPick(
+    sport.filter(a => !pickedIds.has(a.id)),
+    total - primary.length,
+    maxPerSource,
+  );
+
+  return [...primary, ...sportFill];
 }
 
 export interface ArticlePool {
