@@ -179,6 +179,176 @@ async function loadNews(forceRefresh = false): Promise<void> {
   }
 }
 
+// --- Konami code easter egg ---
+
+const KONAMI = [
+  'ArrowUp','ArrowUp','ArrowDown','ArrowDown',
+  'ArrowLeft','ArrowRight','ArrowLeft','ArrowRight',
+  'b','a','Enter',
+];
+let konamiProgress = 0;
+
+function openPuzzleModal(): void {
+  const IMG = 'https://ca.slack-edge.com/T0269F16S-U02S05HNB-28534f5b8723-512';
+  const N = 3;
+  let tiles: number[] = [];
+  let moves = 0;
+  let animating = false;
+
+  function adjacent(idx: number): number[] {
+    const r = Math.floor(idx / N), c = idx % N;
+    const result: number[] = [];
+    if (r > 0)   result.push(idx - N);
+    if (r < N-1) result.push(idx + N);
+    if (c > 0)   result.push(idx - 1);
+    if (c < N-1) result.push(idx + 1);
+    return result;
+  }
+
+  function newGame(): void {
+    tiles = [1,2,3,4,5,6,7,8,0];
+    let emptyIdx = 8, lastEmpty = -1;
+    for (let i = 0; i < 300; i++) {
+      const opts = adjacent(emptyIdx).filter(a => a !== lastEmpty);
+      const pick = opts[Math.floor(Math.random() * opts.length)];
+      [tiles[emptyIdx], tiles[pick]] = [tiles[pick], tiles[emptyIdx]];
+      lastEmpty = emptyIdx;
+      emptyIdx = pick;
+    }
+    moves = 0;
+    animating = false;
+  }
+
+  function isSolved(): boolean {
+    return tiles.every((v, i) => i === N * N - 1 ? v === 0 : v === i + 1);
+  }
+
+  function render(wrap: HTMLElement): void {
+    const grid = wrap.querySelector<HTMLElement>('.puzzle-grid')!;
+    const movesEl = wrap.querySelector<HTMLElement>('.puzzle-moves')!;
+    const winEl = wrap.querySelector<HTMLElement>('.puzzle-win')!;
+    const solved = isSolved() && moves > 0;
+    movesEl.textContent = `Moves: ${moves}`;
+    winEl.classList.toggle('puzzle-win--visible', solved);
+    if (solved) grid.classList.add('puzzle-grid--solved');
+
+    grid.innerHTML = '';
+    const emptyIdx = tiles.indexOf(0);
+
+    tiles.forEach((value, idx) => {
+      const tile = document.createElement('button');
+      tile.className = 'puzzle-tile';
+      tile.type = 'button';
+
+      if (value === 0) {
+        tile.classList.add('puzzle-tile--empty');
+        tile.setAttribute('aria-hidden', 'true');
+      } else {
+        const origRow = Math.floor((value - 1) / N);
+        const origCol = (value - 1) % N;
+        tile.style.backgroundImage = `url(${IMG})`;
+        tile.style.backgroundSize = '300% 300%';
+        tile.style.backgroundPosition =
+          `${(origCol / (N - 1)) * 100}% ${(origRow / (N - 1)) * 100}%`;
+        tile.setAttribute('aria-label', `Tile ${value}`);
+
+        if (!animating && !solved && adjacent(emptyIdx).includes(idx)) {
+          tile.classList.add('puzzle-tile--movable');
+          tile.addEventListener('click', () => moveTile(idx, wrap));
+        }
+      }
+
+      grid.appendChild(tile);
+    });
+  }
+
+  function moveTile(tileIdx: number, wrap: HTMLElement): void {
+    if (animating) return;
+    const emptyIdx = tiles.indexOf(0);
+    if (!adjacent(emptyIdx).includes(tileIdx)) return;
+
+    const grid = wrap.querySelector<HTMLElement>('.puzzle-grid')!;
+    const tileBtns = grid.querySelectorAll<HTMLElement>('.puzzle-tile');
+    const tileEl  = tileBtns[tileIdx];
+    const emptyEl = tileBtns[emptyIdx];
+
+    const tileRect  = tileEl.getBoundingClientRect();
+    const emptyRect = emptyEl.getBoundingClientRect();
+    const dx = emptyRect.left - tileRect.left;
+    const dy = emptyRect.top  - tileRect.top;
+
+    animating = true;
+    grid.style.pointerEvents = 'none';
+    tileEl.style.transition = 'transform 0.14s ease';
+    tileEl.style.transform  = `translate(${dx}px,${dy}px)`;
+    tileEl.style.zIndex     = '2';
+
+    setTimeout(() => {
+      [tiles[emptyIdx], tiles[tileIdx]] = [tiles[tileIdx], tiles[emptyIdx]];
+      moves++;
+      tileEl.style.transition = '';
+      tileEl.style.transform  = '';
+      tileEl.style.zIndex     = '';
+      grid.style.pointerEvents = '';
+      animating = false;
+      render(wrap);
+    }, 150);
+  }
+
+  // Build modal DOM
+  const modal = document.createElement('div');
+  modal.className = 'puzzle-overlay';
+  modal.innerHTML = `
+    <div class="puzzle-box" role="dialog" aria-modal="true" aria-label="Sliding Puzzle">
+      <button class="puzzle-close" aria-label="Close">✕</button>
+      <div class="puzzle-header">
+        <h2 class="puzzle-title">Slide the Face</h2>
+        <p class="puzzle-subtitle">Restore James to his former glory</p>
+      </div>
+      <div class="puzzle-meta">
+        <span class="puzzle-moves">Moves: 0</span>
+        <button class="puzzle-new-btn" type="button">New Game</button>
+      </div>
+      <div class="puzzle-grid"></div>
+      <div class="puzzle-win">🎉 Solved! Nice one.</div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+  newGame();
+  render(modal);
+  requestAnimationFrame(() => modal.classList.add('puzzle-overlay--visible'));
+
+  const close = () => {
+    modal.classList.remove('puzzle-overlay--visible');
+    modal.addEventListener('transitionend', () => modal.remove(), { once: true });
+  };
+
+  modal.querySelector('.puzzle-close')!.addEventListener('click', close);
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  document.addEventListener('keydown', function onEsc(e) {
+    if (e.key === 'Escape') { close(); document.removeEventListener('keydown', onEsc); }
+  });
+
+  modal.querySelector('.puzzle-new-btn')!.addEventListener('click', () => {
+    modal.querySelector('.puzzle-grid')?.classList.remove('puzzle-grid--solved');
+    newGame();
+    render(modal);
+  });
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === KONAMI[konamiProgress]) {
+    konamiProgress++;
+    if (konamiProgress === KONAMI.length) {
+      konamiProgress = 0;
+      openPuzzleModal();
+    }
+  } else {
+    konamiProgress = e.key === KONAMI[0] ? 1 : 0;
+  }
+});
+
 buildShell();
 spawnParticles();
 loadNews();

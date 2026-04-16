@@ -529,3 +529,179 @@ body {
 ::-webkit-scrollbar       { width: 6px; }
 ::-webkit-scrollbar-track { background: var(--bg); }
 ::-webkit-scrollbar-thumb { background: #2a3a55; border-radius: 3px; }
+
+/* ── Konami sliding puzzle ── */
+.puzzle-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0);
+  backdrop-filter: blur(0px);
+  -webkit-backdrop-filter: blur(0px);
+  transition: background 0.3s ease, backdrop-filter 0.3s ease;
+}
+
+.puzzle-overlay--visible {
+  background: rgba(0, 0, 0, 0.82);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.puzzle-box {
+  position: relative;
+  background: #0d1526;
+  border: 1px solid var(--amber);
+  border-radius: var(--radius);
+  box-shadow: 0 0 60px rgba(255, 183, 3, 0.15), var(--shadow-hover);
+  padding: 28px 24px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  opacity: 0;
+  transform: scale(0.9) translateY(16px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.puzzle-overlay--visible .puzzle-box {
+  opacity: 1;
+  transform: scale(1) translateY(0);
+}
+
+.puzzle-close {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  line-height: 1;
+  transition: color 0.2s, background 0.2s;
+}
+
+.puzzle-close:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.puzzle-header { text-align: center; }
+
+.puzzle-title {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 1.4rem;
+  font-weight: 900;
+  background: linear-gradient(90deg, var(--amber), var(--coral));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.puzzle-subtitle {
+  font-size: 0.73rem;
+  color: var(--text-muted);
+  margin-top: 3px;
+}
+
+.puzzle-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: min(288px, calc(100vw - 80px));
+}
+
+.puzzle-moves {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.puzzle-new-btn {
+  background: rgba(255, 183, 3, 0.1);
+  border: 1px solid rgba(255, 183, 3, 0.3);
+  color: var(--amber);
+  font-family: 'Inter', sans-serif;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 5px 14px;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.puzzle-new-btn:hover {
+  background: rgba(255, 183, 3, 0.22);
+  border-color: var(--amber);
+}
+
+.puzzle-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  width: min(288px, calc(100vw - 80px));
+  aspect-ratio: 1;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 10px;
+  padding: 4px;
+  border: 2px solid transparent;
+  transition: border-color 0.4s ease, box-shadow 0.4s ease;
+}
+
+.puzzle-grid--solved {
+  border-color: var(--green);
+  box-shadow: 0 0 28px rgba(6, 214, 160, 0.3);
+}
+
+.puzzle-tile {
+  border: none;
+  border-radius: 6px;
+  background: #131d2e;
+  background-repeat: no-repeat;
+  cursor: default;
+  position: relative;
+  padding: 0;
+  transition: filter 0.12s ease;
+}
+
+.puzzle-tile--empty {
+  background: #060b14 !important;
+  box-shadow: inset 0 0 16px rgba(0, 0, 0, 0.6);
+}
+
+.puzzle-tile--movable {
+  cursor: pointer;
+}
+
+.puzzle-tile--movable:hover  { filter: brightness(1.18); z-index: 1; }
+.puzzle-tile--movable:active { filter: brightness(0.88); }
+
+.puzzle-win {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--green);
+  text-align: center;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.4s ease, transform 0.4s ease;
+  pointer-events: none;
+  height: 0;
+  overflow: hidden;
+}
+
+.puzzle-win--visible {
+  opacity: 1;
+  transform: translateY(0);
+  height: auto;
+}
+
+@media (max-width: 420px) {
+  .puzzle-box { padding: 22px 16px 20px; }
+}
