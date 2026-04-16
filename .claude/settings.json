@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh run *)",
+      "WebFetch(domain:api.rss2json.com)",
+      "WebFetch(domain:content.guardianapis.com)",
+      "WebFetch(domain:feeds.bbci.co.uk)",
+      "WebFetch(domain:www.thecourier.co.uk)",
+      "WebFetch(domain:news.google.com)"
+    ]
+  }
+}
