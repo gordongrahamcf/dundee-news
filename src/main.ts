@@ -179,6 +179,81 @@ async function loadNews(forceRefresh = false): Promise<void> {
   }
 }
 
+// --- Wet Wet Wet announcement modal ---
+
+function openWetWetWetModal(): void {
+  const modal = document.createElement('div');
+  modal.className = 'wwwmodal-overlay';
+  modal.innerHTML = `
+    <div class="wwwmodal-box" role="dialog" aria-modal="true" aria-label="Wet Wet Wet coming to Dundee">
+      <button class="wwwmodal-close" aria-label="Close">✕</button>
+
+      <svg class="wwwmodal-graphic" viewBox="0 0 220 170" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <defs>
+          <radialGradient id="wwwBgGlow" cx="50%" cy="55%" r="55%">
+            <stop offset="0%" stop-color="#ff6b9d" stop-opacity="0.28"/>
+            <stop offset="100%" stop-color="#9333ea" stop-opacity="0"/>
+          </radialGradient>
+          <linearGradient id="wwwHeartGrad" x1="30%" y1="0%" x2="70%" y2="100%">
+            <stop offset="0%" stop-color="#ff6b9d"/>
+            <stop offset="100%" stop-color="#9333ea"/>
+          </linearGradient>
+        </defs>
+
+        <ellipse cx="110" cy="95" rx="100" ry="78" fill="url(#wwwBgGlow)"/>
+
+        <path class="wwwmodal-heart-path"
+          d="M 55 80 A 32 32 0 0 1 110 80 A 32 32 0 0 1 165 80 Q 165 120 110 150 Q 55 120 55 80 Z"
+          fill="url(#wwwHeartGrad)"/>
+
+        <path d="M 65 70 A 18 18 0 0 1 96 66"
+          stroke="rgba(255,255,255,0.22)" stroke-width="3" fill="none" stroke-linecap="round"/>
+
+        <text class="wwwmodal-note-1" x="16" y="66" font-size="26" fill="#FFB703" opacity="0.85">♪</text>
+        <text class="wwwmodal-note-2" x="182" y="76" font-size="22" fill="#00d4e8" opacity="0.85">♫</text>
+        <text class="wwwmodal-note-3" x="10" y="112" font-size="18" fill="#9333ea" opacity="0.75">♩</text>
+        <text class="wwwmodal-note-4" x="188" y="120" font-size="20" fill="#FFB703" opacity="0.75">♪</text>
+        <text class="wwwmodal-note-1" x="80" y="18" font-size="15" fill="#00d4e8" opacity="0.6">♫</text>
+        <text class="wwwmodal-note-2" x="128" y="20" font-size="17" fill="#ff6b9d" opacity="0.6">♪</text>
+        <text class="wwwmodal-note-3" x="28" y="152" font-size="13" fill="#00d4e8" opacity="0.45">♪</text>
+        <text class="wwwmodal-note-4" x="175" y="156" font-size="14" fill="#9333ea" opacity="0.45">♫</text>
+
+        <circle cx="42" cy="35" r="2.5" fill="#FFB703" opacity="0.7"/>
+        <circle cx="180" cy="32" r="2"   fill="#00d4e8" opacity="0.7"/>
+        <circle cx="207" cy="72" r="1.5" fill="#9333ea" opacity="0.9"/>
+        <circle cx="14"  cy="84" r="1.5" fill="#ff6b9d" opacity="0.7"/>
+        <circle cx="157" cy="160" r="2"  fill="#FFB703" opacity="0.5"/>
+        <circle cx="58"  cy="163" r="1.5" fill="#00d4e8" opacity="0.5"/>
+      </svg>
+
+      <p class="wwwmodal-eyebrow">🎶 Coming to Dundee</p>
+      <h2 class="wwwmodal-band">WET WET WET</h2>
+      <p class="wwwmodal-tagline">Love Is All Around</p>
+      <div class="wwwmodal-venue">
+        <span>📍 Caird Hall</span>
+        <span class="wwwmodal-venue-sep">·</span>
+        <span>Summer 2026</span>
+      </div>
+      <a href="#" class="wwwmodal-cta">Get Tickets →</a>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+  requestAnimationFrame(() => modal.classList.add('wwwmodal-overlay--visible'));
+
+  const close = () => {
+    modal.classList.remove('wwwmodal-overlay--visible');
+    modal.addEventListener('transitionend', () => modal.remove(), { once: true });
+  };
+
+  modal.querySelector('.wwwmodal-close')!.addEventListener('click', close);
+  modal.querySelector('.wwwmodal-cta')!.addEventListener('click', e => e.preventDefault());
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  document.addEventListener('keydown', function onEsc(e) {
+    if (e.key === 'Escape') { close(); document.removeEventListener('keydown', onEsc); }
+  });
+}
+
 // --- Konami code easter egg ---
 
 const KONAMI = [
@@ -352,6 +427,7 @@ document.addEventListener('keydown', e => {
 buildShell();
 spawnParticles();
 loadNews();
+setTimeout(() => openWetWetWetModal(), 1200);
 
 document.addEventListener('click', e => {
   const btn = (e.target as HTMLElement).closest('#refreshBtn');
