@@ -234,7 +234,6 @@ function openWetWetWetModal(): void {
         <span class="wwwmodal-venue-sep">·</span>
         <span>Summer 2026</span>
       </div>
-      <a href="#" class="wwwmodal-cta">Get Tickets →</a>
     </div>
   `;
 
