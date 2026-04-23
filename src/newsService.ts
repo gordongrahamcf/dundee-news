@@ -21,10 +21,9 @@ const RSS_FEEDS: RssFeed[] = [
     source: 'BBC Scotland',
     sourceKey: 'bbc',
     filterKeywords: [
-      'dundee', 'tayside', 'angus', 'fife',
+      'dundee', 'tayside', 'angus',
       'forfar', 'arbroath', 'montrose', 'carnoustie',
       'kirriemuir', 'brechin', 'broughty ferry',
-      'perthshire', 'blairgowrie', 'pitlochry',
     ],
   },
   {
@@ -32,15 +31,14 @@ const RSS_FEEDS: RssFeed[] = [
     source: 'STV News',
     sourceKey: 'stv',
     filterKeywords: [
-      'dundee', 'tayside', 'angus', 'fife',
+      'dundee', 'tayside', 'angus',
       'forfar', 'arbroath', 'montrose', 'carnoustie',
       'kirriemuir', 'brechin', 'broughty ferry',
-      'perthshire', 'blairgowrie', 'pitlochry', 'perth',
     ],
   },
 ];
 
-export const ACTIVE_SOURCES = ['The Guardian', ...RSS_FEEDS.map(f => f.source)];
+export const ACTIVE_SOURCES = ['The Guardian', ...RSS_FEEDS.map(f => f.source), 'L&C Dundee'];
 
 function stripHtml(html: string): string {
   return html
@@ -137,6 +135,54 @@ async function fetchRssFeed(feed: RssFeed): Promise<NewsArticle[]> {
           author: item.author || undefined,
         };
       });
+  } catch {
+    return [];
+  }
+}
+
+const LCD_BASE = 'https://www.leisureandculturedundee.com';
+const LCD_PROXY = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(LCD_BASE + '/news')}`;
+
+async function fetchLeisureCulture(): Promise<NewsArticle[]> {
+  try {
+    const res = await fetch(LCD_PROXY);
+    if (!res.ok) return [];
+
+    const html = await res.text();
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const now = new Date();
+    const articles: NewsArticle[] = [];
+
+    doc.querySelectorAll('.views-field-title').forEach((titleEl, idx) => {
+      const link = titleEl.querySelector('a');
+      if (!link) return;
+
+      const title = link.textContent?.trim();
+      const href = link.getAttribute('href');
+      if (!title || !href) return;
+
+      const row = titleEl.closest('.views-row') ?? titleEl.parentElement;
+      const descText = row?.querySelector('.views-field-body')?.textContent?.trim() ?? '';
+      const description = descText.length > 200 ? descText.slice(0, 200) + '…' : descText;
+
+      const rawSrc = row?.querySelector('img')?.getAttribute('src') ?? '';
+      const imageUrl = rawSrc
+        ? (rawSrc.startsWith('http') ? rawSrc : LCD_BASE + rawSrc)
+        : undefined;
+
+      articles.push({
+        id: `lcdundee-${href.replace(/[^a-z0-9]/gi, '-').slice(0, 28)}`,
+        title,
+        description,
+        url: href.startsWith('http') ? href : LCD_BASE + href,
+        imageUrl,
+        publishedAt: new Date(now.getTime() - idx * 90 * 60 * 1000), // stagger 90m apart
+        source: 'L&C Dundee',
+        sourceKey: 'lcdundee',
+      });
+    });
+
+    return articles.slice(0, 15);
   } catch {
     return [];
   }
@@ -267,12 +313,13 @@ export interface ArticlePool {
  * Returns the deduplicated, date-sorted pool — caller decides what to display.
  */
 export async function fetchArticlePool(): Promise<ArticlePool> {
-  const [guardianArticles, ...rssResults] = await Promise.all([
+  const [guardianArticles, lcDundeeArticles, ...rssResults] = await Promise.all([
     fetchGuardianArticles(),
+    fetchLeisureCulture(),
     ...RSS_FEEDS.map(f => fetchRssFeed(f)),
   ]);
 
-  const articles = deduplicateArticles([guardianArticles, ...rssResults].flat());
+  const articles = deduplicateArticles([guardianArticles, lcDundeeArticles, ...rssResults].flat());
   articles.sort((a, b) => b.publishedAt.getTime() - a.publishedAt.getTime());
 
   return { articles, fetchedAt: new Date() };

@@ -25,6 +25,12 @@ const SOURCE_CONFIGS: Record<SourceKey, SourceConfig> = {
     color: '#007A3D',
     emoji: '📺',
   },
+  lcdundee: {
+    key: 'lcdundee',
+    label: 'L&C Dundee',
+    color: '#8B2BE2',
+    emoji: '🎭',
+  },
 };
 
 const GRADIENT_STYLES = [
